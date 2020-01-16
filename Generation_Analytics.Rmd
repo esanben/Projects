@@ -1,0 +1,348 @@
+---
+title: EDA & FORECASTING ON GENERATION DATA OBTAINED FROM THE NIGERIAN ELECTRICITY REGULATORY
+  COMMISSION (NERC).
+author: "Esan Ayodele Benjamin.C"
+date: "18th December 2019"
+output:
+  html_notebook: default
+  pdf_document: default
+  html_document:
+    fig_caption: yes
+    number_sections: yes
+    theme: yeti
+editor_options: 
+  chunk_output_type: inline
+---
+
+This exploratory data analysis (EDA) is the first in the series for EDA's performed on the Energy situation in Nigeria. This would be targeted towards understanding the Generation, Distribution, and Transmission state of Nigeria from the year 2015 till 2018.
+
+
+##Setting up preliminary workspaces.
+
+```{r, warning=FALSE, message=FALSE}
+setwd("C:/Users/Isioma/Desktop/New Data Science Project") # Sets the current working directory
+rm(list = ls(all.names = TRUE)) #Removes all previously defined objects in workspace.
+library(tidyverse) # Loads the tidyverse package including dplyr, ggplot2, tidyr, etc.
+library(lubridate) # Loads the lubridate package for dealing with date-time objects
+library(stringr) # Loads the stringr package for dealing with strings in R
+library(fpp2) # Loads the fpp2 package for dealing with time series forecasting in R
+theme_set(theme_classic()) #Sets the general theme for plots with ggplot2.
+```
+
+#Step 1: Reading in the first dataset.
+```{r, warning=FALSE, message=FALSE}
+Energy_sentout <- read_csv('Daily_Energy_Sent_Out.csv')
+Energy_sentout <- as.data.frame(Energy_sentout)
+sum(is.na(Energy_sentout)) #Checks for any missing value
+Energy_sentout$Event_Date <- dmy(Energy_sentout$Event_Date) #Converts Event Date into a date format in R.
+Energy_sentout <- Energy_sentout %>% rename("Total_Energy_GWH" = `Total Energy (GWH)`) %>% 
+                  mutate(Year = as.integer(year(Event_Date)), Month = month(Event_Date, label = TRUE), Day =                    wday(Event_Date, label = TRUE))
+Energy_sentout %>% filter(Year %in% c(2016, 2017, 2018)) %>% glimpse()
+```
+
+Understanding the generation trend over the last three years from 2016 till 2018.
+```{r, fig.align='center', fig.height=6, fig.width=8.5, out.width="8.5"}
+# Yearly trend.
+Energy_sentout %>% filter(Year %in% c(2016, 2017, 2018)) %>%
+        select(Year, Total_Energy_GWH) %>%
+        group_by(Year) %>% 
+        summarize(Total_Energy_GWH = mean(Total_Energy_GWH)) %>%
+        arrange(desc(Year)) %>%
+        ggplot(aes(Year, Total_Energy_GWH))+
+        geom_line()+
+        geom_point()+
+        geom_text(aes(label = paste(round(Total_Energy_GWH, 2), "GWH")), size = 3.5, hjust = .5, vjust = -1)+
+        labs(x = "Year", y = "Gigawatts-Hour (GWH)", title = "Mean Daily Total Energy Sent Out from GENCO's.", subtitle = "Figure 1: Trend over last three years (2016 - 2018)")+
+        scale_x_continuous(breaks = 2016:2018)
+```
+
+It can be observed that from the plot of figure 1, there has been an upward growth in the mean daily energy sent out by Generating companies in Nigeria. On average, the daily energy sent out increased by approximately 11.1% in 2017, and 6.7% in 2018, with the year 2017 recording the highest leap in total energy sent out.
+
+```{r, fig.align='center', fig.height=6, fig.width=8, out.width="8"}
+# Monthly trend
+LabMonths <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec")
+Energy_sentout %>% filter(Year %in% c(2016, 2017, 2018)) %>%
+                  select(Year, Month, Total_Energy_GWH) %>%
+                  mutate(Year = as.factor(Year)) %>%
+                  group_by(Month, Year) %>%
+                  summarize(Total_Energy_GWH = mean(Total_Energy_GWH)) %>%
+                  ungroup()%>%
+                  arrange(desc(Total_Energy_GWH))%>%
+                  mutate(Month = as.numeric(Month)) %>%
+                  ggplot(aes(Month, Total_Energy_GWH, color = Year))+
+                  geom_line()+
+                  scale_x_continuous(breaks = 1:12, labels = LabMonths)+
+                  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+                  labs(x = "Months", y = "Gigawatts-Hour (GWH)", title = "Daily Total Energy Sent Out from Market Operators.", subtitle = "Figure 2: Monthly trends (Jan - Dec) over last three years (2016 - 2018)")
+```
+
+In 2016, it could be seen that there was progressive decrease in energy supplied right from January, until it reached its lowest in June (a 45% drop in energy sent within a space of just 6 months). It however increased steadily till October where it reached its peak and declined gradually again from there.
+
+In 2018, June recorded a sharp decline in energy sent out and continued almost steadily till around September when it peaked up reaching its highest record energy sent out in December.
+
+```{r, fig.align='center', fig.height=6, fig.width=8, out.width="8"}
+Energy_sentout %>% filter(Year %in% c(2016, 2017, 2018)) %>%
+                  mutate(Year = as.factor(Year))%>%
+                  # Year 2018 recorded the most energy sent out to the Grid.
+                  # Year 2016 recorded the least energy sent out to the Grid.
+                  ggplot(aes(Year, Total_Energy_GWH))+
+                  geom_boxplot()+
+                  labs(x = "Year", y = "Gigawatts-Hour (GWH)", title = "Yearly Distribution of Total Energy Sent Out by GENCO's", subtitle = "Figure 3: 2016-2018")+
+                  coord_flip()
+```
+```{r, fig.align='center', fig.height=6, fig.width=12, out.width="12"}
+Energy_sentout %>% filter(Year == 2018) %>% 
+                  group_by(Month) %>%
+                  summarize(Total_Energy_GWH = mean(Total_Energy_GWH)) %>%
+                  arrange(desc(Total_Energy_GWH)) %>%
+                  ungroup()%>%
+                  ggplot(aes(fct_reorder(Month, Total_Energy_GWH), Total_Energy_GWH)) + geom_col(width = 0.7)+ geom_text(aes(label = paste(round(Total_Energy_GWH),"GWH")),hjust = -0.03, size = 3.5)+
+                  labs(x = "Month", y = "Gigawatts-Hour (GWH)", title = "Mean Energy Sent Out for Year 2018 (GWH)", subtitle = "Figure 4: Showing distribution by months: Highest to Lowest")+
+                  coord_flip()+
+                  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+From the three years (2016 - 2018) considered, the year 2018 recored the highest average energy sent out while 2016 recorded the least. 
+
+In 2018, December showed the highest record of energy sent out by GENCO's, while September showed the least energy sent out.
+
+In 2016, January showed the highest recorded energy sent out, while June showed the worst record.
+
+```{r, fig.align='center', fig.height=6, fig.width=12, out.width="12"}
+Energy_sentout %>% filter(Year == 2016) %>% 
+                  group_by(Month) %>%
+                  summarize(Total_Energy_GWH = mean(Total_Energy_GWH)) %>%
+                  arrange(desc(Total_Energy_GWH)) %>%
+                  ungroup()%>%
+                  ggplot(aes(fct_reorder(Month, Total_Energy_GWH), Total_Energy_GWH)) + geom_col(width = 0.7)+ geom_text(aes(label = paste(round(Total_Energy_GWH),"GWH")),hjust = -0.03, size = 3.5)+
+                  labs(x = "Month", y = "Gigawatts-Hour (GWH)", title = "Mean Energy Sent Out for Year 2016 (GWH)", subtitle = "Figure 5: Showing distribution by months: Highest to Lowest")+
+                  coord_flip()+
+                  theme(axis.title.x = element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+#Step 2: Reading in the second dataset.
+
+```{r, warning=FALSE, message=FALSE}
+Peak_power <- read_csv("Daily Peak Power Generated.csv") # Peak Power Generated Daily by GENCO's
+Peak_power <- Peak_power %>%
+              rename("Event_Date" = `Event Date`, "PeakPower" = `Peak Power (MW)`)%>%
+              mutate(Event_Date = dmy(Event_Date), PeakPower = as.factor(PeakPower))
+
+# Performing an inner join operation with the first dataset on Energy sent out.
+EnergyS_PeakP <- Energy_sentout %>% 
+                  inner_join(Peak_power, by = "Event_Date")%>%
+                  select(Event_Date,Total_Energy_GWH,PeakPower, everything())
+
+EnergyS_PeakP %>%
+              group_by(PeakPower) %>%
+              summarize(Count = n())
+```
+From the count, we see that category 1 and 9 has almost negligible counts, hence we use fct_lump to lump these together.
+
+```{r, fig.align='center', fig.height=5, fig.width=6, out.width="5"}
+EnergyS_PeakP %>%
+              mutate(PeakPower = fct_lump(PeakPower,4))%>%
+              filter(PeakPower == "Other") %>%
+              ggplot(aes(x = PeakPower, y = Total_Energy_GWH, fill = factor(Year, levels = c("2019", "2016"))))+
+              geom_bar(stat = "identity", position = "stack")+
+              labs(fill = "Year", y = "Energy Sent Out w.r.t Peak Power/Demand", x = "", title = "Total Energy Sent Out (GWH) during Extreme Power Periods", subtitle = "Figure 6: 201.34GWH ~ 9MW and 38.49GWH ~ 1MW")
+```
+
+As these values are not the usual occurences and are at the extremes (1MW at the low end, and 9MW at the high end), this could be treated as outliers.
+
+```{r, fig.align='center', fig.height=6, fig.width=8, out.width="8"}
+EnergyS_PeakP %>%
+              filter(Year %in% c(2016,2017,2018))%>%
+              mutate(PeakPower = fct_lump(PeakPower,4))%>%
+              filter(PeakPower != "Other")%>%
+              group_by(PeakPower)%>%
+              ggplot(aes(PeakPower, Total_Energy_GWH)) +
+              geom_boxplot()+
+              labs(x = "Peak Power Produced (MW)", y = "Total Sent Out Energy (Per GWH or Per 1000 MWH)", title = "Distribution of Total Energy Sent Out based on Peak Power Produced",
+                    subtitle = "Figure 7: From January 2016 till December 2018")+
+              coord_flip()
+```
+
+On average, the total energy sent out (GWH) seems to increase when the peak power produced by the GENCO's are higher.
+
+```{r, fig.align='center', fig.height=6, fig.width=8, out.width="8"}
+EnergyS_PeakP %>%
+              mutate(Year = factor(Year), Month = as.numeric(Month), PeakPower = fct_lump(PeakPower,4)) %>%
+              filter(Year %in% c(2016,2017,2018), PeakPower != "Other")%>%            
+              group_by(Month, Year, PeakPower) %>%
+              summarize(Total_Energy_GWH = mean(Total_Energy_GWH)) %>%
+              ungroup()%>%
+              select(everything())%>%
+              ggplot(aes(Month, Total_Energy_GWH, color = Year)) +
+              geom_line()+
+              scale_x_continuous(breaks = 1:12, labels = LabMonths)+
+              theme_light()+
+              theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+              labs(x = "Months", y = "", title = "Monthly trend on Total Energy Sent Out (Per GWH or Per 1000 MWH)", subtitle = "Figure 8: Based on Peak Power Produced from Year 2016 till 2018")+
+              theme(axis.text.x = element_text(angle = 60, hjust = 1))+
+              facet_wrap(~PeakPower, scales = "free")
+```
+
+In the three years considered (2016 till 2018), on average, the daily peak power produced by GENCO's stood at 4MW as shown in the plot, with daily energy being sent out all through the months of January-December.
+
+Around June 2018, when six gas stations were out of operation due to various constraints, the minimum daily power produced stood at 3MW. At 3MW, the maximum daily energy sent out by GENCO's was approximately equal to daily total energy sent out in the worst performing months when daily peak power produced was 5MW. This reveals some positive relationship between the peak power produced and the total energy sent out by the GENCO's
+
+##Step 3: Reading in the third dataset.
+```{r, warning=FALSE, message=FALSE}
+Constr_Power <- read_csv("Constrained Power.csv", locale = locale(encoding = "ASCII"))
+
+Constr_Power <- Constr_Power %>% 
+                rename("Event_Date" = `Event Date`, "Daily_constrained_power_GW" = `Daily Total Constrained Power (MW)`) %>%
+                mutate(Daily_constrained_power_GW = Daily_constrained_power_GW/1000, Event_Date = dmy(Event_Date),
+                       Year = year(Event_Date), Month = month(Event_Date, label = TRUE), Day = wday(Event_Date, label = TRUE))
+                
+# Doing an inner join with the previous merged datasets
+Combined_GenData <- Constr_Power %>%
+                filter(Year != 2019)%>%
+                inner_join(EnergyS_PeakP)
+```
+
+```{r, fig.align='center', fig.height=6, fig.width=12.5, out.width="12"}
+Combined_GenData %>% 
+                  group_by(Month) %>%
+                  mutate(Daily_constrained_power_GW = mean(Daily_constrained_power_GW))%>%
+                  ungroup()%>%
+                  ggplot(aes(as.numeric(Month), Daily_constrained_power_GW)) +
+                  geom_line()+
+                  geom_point(size = 3)+
+                  geom_text(aes(label = paste(round(Daily_constrained_power_GW, 2),"GW")), size = 3.5, vjust = -0.5, hjust = -0.01)+
+                  scale_x_continuous(breaks = 9:12, labels = c("Sept", "Oct", "Nov", "Dec"))+
+                  labs(x = "Month", y = "Daily constrained power (GW)", title = "Mean daily constrained power (GW)", subtitle = "Figure 9: September 2018 - December 2018")
+
+```
+
+The merged datasets only showed the daily records for the months of September till December of 2018.
+
+Running explorations on this, It is clearly seen that asides from the month of October which showed a slight increment in daily power constrained (approximately 2%) from september due to factors already highlighted in previous explorations, other months showed tremendous reductions in daily power constrained. 
+December 2018 recorded the least amount of power constrained, and not surprisingly was the month having the highest mean daily energy sent out in 2018 as shown in figure 4.
+
+```{r, fig.align='center', fig.height=5, fig.width=8, out.width="8"}
+Combined_GenData %>% ggplot(aes(Daily_constrained_power_GW, Total_Energy_GWH))+
+                  geom_point()+
+                  geom_smooth(method = "lm", se = FALSE, color = "red")+
+                  geom_label(x = 1.5, y = 95, label = "Corr.coeff = -0.505 (Strong)", color = "black", size = 4, vjust = 1, fontface = "italic")+
+                  labs(x = "Daily constrained power (GW)", y = "Total Energy Sent Out (GWH)", title = "Relationship between daily constrained power (GW) and total energy sent out (GWH)", subtitle = "Figure 10: Validated using its correlation coefficient")
+```
+
+Figure 10 clearly shows the negative correlation between daily constrained power and total energy sent out. The more power is constrained or restricted due to various reasons (Gas constraints, water constraints, technical constraints, etc) the less average energy would be sent out by GENCO's.
+
+```{r, warning=FALSE, message=FALSE}
+# The month and day which had the HIGHEST constrained power from our merged dataset.
+Combined_GenData %>%
+                  arrange(desc(Daily_constrained_power_GW))%>%
+                  head(1)%>%
+                  select(Day, Month, Year, Daily_constrained_power_GW, Total_Energy_GWH)
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+# The month and day which had the LEAST constrained power from our merged dataset.
+Combined_GenData %>%
+                  arrange((Daily_constrained_power_GW))%>%
+                  head(1)%>%
+                  select(Day, Month, Year, Daily_constrained_power_GW, Total_Energy_GWH)
+```
+
+
+## Step 4: Performing time series predictions for the Energy Sent Out dataset
+```{r}
+# Exploring three different time series prediction method to predict for few days of the year 2019 using
+# the pre-existing data for 2016, 2017, and 2018.
+
+# Step 4a: Performing some preliminary stages to prepare the time series data for analysis.
+Energy_data <- Energy_sentout %>%
+                filter(Year %in% c(2016, 2017, 2018))%>%
+                arrange(Event_Date)%>%
+                select(Event_Date, Total_Energy_GWH)
+
+
+Y <- msts(Energy_data$Total_Energy_GWH, seasonal.periods = c(7,365.25)) # Creates the time series data
+
+autoplot(Y) + labs(y = "Daily Energy Sent out in (GWH)", title = "Figure 11: Time plot for Daily Nigeria's Energy Sent Out Between 2016 to 2018") # Time plot for Y
+
+```
+
+The daily plot shows no apparent trend in time series, shows lots of seasonalities and variations. Checking different time series forecasting technique to see which better fits the data. Our benchmark in this analysis is the residual standand deviation. The lower the residual standard deviation, the better of a model the technique is.
+
+```{r}
+# Step 4b: Forecasting with different methods.
+
+# Using a benchmark method: Seasonal Naive Method
+fit_sn <- snaive(Y) 
+```
+
+The seasonal naive method resulted in a residual SD of 14.7987
+
+```{r}
+# Using Exponential Smoothing Methods (ETS)
+fit_ets <- stlf(Y) 
+```
+The ETS method showed a residual SD of 4.6544
+
+```{r}
+# Trying a TBAT model
+fit_tbats <- tbats(Y)
+```
+The TBAT method showed a residual SD of 6.15752
+
+Of the three techniques tested here, it seems the ETS method is better fitting our time series data with its residual standard deviation being the least of the other two options.
+
+
+```{r}
+# Forecasting the next 31 days of our time series data, which is all days in the month of January 2019 using the ETS technique.
+fc_ets <- forecast(fit_ets, h=31)
+autoplot(fc_ets)+labs(y = "Daily energy sent out (GWH)", title = "Figure 12: Time forecast using Exponential Smoothing Model")
+Forecast_Jan2019 <- print(summary(fc_ets))
+
+
+```
+
+Note that the 'Lo 80, Hi 80' and the 'Lo 95, Hi 95' represents both the low and high 80% and 95% percent confidence interval for the point forecast.
+
+```{r}
+# Checking the accuracy of our estimates based on the original data
+
+Forecast_Jan_2019 <- Forecast_Jan2019 %>%
+                    rename("Point_Forecast" = `Point Forecast`, "Low_80" = `Lo 80`, 
+                          "High_80" = `Hi 80`, "Low_95" = `Lo 95`, "High_95" = `Hi 95`)
+
+# Appending a variable containing the real values from the Energy sent dataset.
+Real <- Energy_sentout %>%
+                      filter(Month == "Jan", Year == 2019)%>%
+                      arrange(Event_Date)%>%
+                      head(31)%>%
+                      select(Total_Energy_GWH)
+Real <- Real$Total_Energy_GWH
+Forecast_Jan_2019 <- cbind(Forecast_Jan_2019,Real)
+
+```
+
+```{r}
+# Computing the Mean squared error (MSE) and accuracy of our forecasts.
+Forecast_Jan_2019 <- Forecast_Jan_2019 %>%
+                      mutate(Error = (Real - Point_Forecast), Measure = ifelse(Real >= Low_95 & Real <= High_95, TRUE, FALSE))
+
+```
+
+```{r}
+# Mean Squared Error (MSE)
+Forecast_Jan_2019 %>% 
+                    select(Error) %>%
+                    summarize(mse = paste("The Mean Squared Error is given by: ", round(mean((Error^2)))))
+
+# Checking accuracy of forecast
+Measure <- Forecast_Jan_2019$Measure
+ntrue <- sum(Measure == TRUE)
+nfalse <- sum(Measure == FALSE)
+Accuracy <- (ntrue/(ntrue+nfalse))* 100
+print(Accuracy)
+```
+
+Deductions: From our time series forecast, we see from the results obtained that 97% of our predictions using the exponential smoothing technique were within the 95% confidence interval of our forecasts, and our forecast had a mean squared error (MSE) of approximately 408.
+
+## THE END
